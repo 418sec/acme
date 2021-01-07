@@ -475,5 +475,6 @@ class SaveableAdapter(tf.train.experimental.PythonState):
     return pickle.dumps(state)
 
   def deserialize(self, pickled: bytes):
-    state = pickle.loads(restricted_loads(pickled))
+    restricted_loads(pickled)
+    state = pickle.loads(pickled)
     self._object_to_save.restore(state)
