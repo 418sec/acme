@@ -21,6 +21,8 @@ import os
 import pickle
 import signal
 import time
+import io
+import builtins
 from typing import Mapping, Union, Optional
 
 from absl import logging
@@ -39,6 +41,28 @@ Checkpointable = Union[tf.Module, tf.Variable, PythonState]
 _DEFAULT_CHECKPOINT_TTL = int(datetime.timedelta(days=5).total_seconds())
 _DEFAULT_SNAPSHOT_TTL = int(datetime.timedelta(days=90).total_seconds())
 
+safe_builtins = {
+    'range',
+    'complex',
+    'set',
+    'frozenset',
+    'slice',
+}
+
+
+class RestrictedUnpickler(pickle.Unpickler):
+
+    def find_class(self, module, name):
+        """Only allow safe classes from builtins"""
+        if module == "builtins" and name in safe_builtins:
+            return getattr(builtins, name)
+        """Forbid everything else"""
+        raise pickle.UnpicklingError("global '%s.%s' is forbidden" %
+                                     (module, name))
+
+def restricted_loads(s):
+    """Helper function analogous to pickle.loads()"""
+    return RestrictedUnpickler(io.BytesIO(s)).load()
 
 class TFSaveable(abc.ABC):
   """An interface for objects that expose their checkpointable TF state."""
@@ -451,5 +475,6 @@ class SaveableAdapter(tf.train.experimental.PythonState):
     return pickle.dumps(state)
 
   def deserialize(self, pickled: bytes):
+    restricted_loads(pickled)
     state = pickle.loads(pickled)
     self._object_to_save.restore(state)
